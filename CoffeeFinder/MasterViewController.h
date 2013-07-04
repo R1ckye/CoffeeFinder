@@ -6,8 +6,16 @@
 //  Copyright (c) 2013 Richard Murvai. All rights reserved.
 //
 
-#import <UIKit/UIKit.h>
+#define kClientID "IJUBWPBX4LLAZTQWXZ34VMKHRIGLWJOQ21U05KKEAHBPXZPR"
+#define kClientSecret "IGZAAUSXZIOOEDT4CXXYTX3S0FIUA44D0JD1PZAKWWJUWQXV"
 
-@interface MasterViewController : UITableViewController
+#import <UIKit/UIKit.h>
+#import <RestKit/RestKit.h>
+#import <CoreLocation/CoreLocation.h>
+
+#import "Venue.h"
+#import "Location.h"
+
+@interface MasterViewController : UITableViewController <CLLocationManagerDelegate>
 
 @end

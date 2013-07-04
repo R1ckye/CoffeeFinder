@@ -13,9 +13,16 @@
 @interface MasterViewController () {
     NSMutableArray *_objects;
 }
+
+@property (strong, nonatomic) NSArray *coffeeArray;
+@property (strong, nonatomic) CLLocation *lastLocation;
+
 @end
 
 @implementation MasterViewController
+
+@synthesize coffeeArray = _coffeeArray;
+@synthesize lastLocation = _lastLocation;
 
 - (void)awakeFromNib
 {
@@ -25,11 +32,95 @@
 - (void)viewDidLoad
 {
     [super viewDidLoad];
-	// Do any additional setup after loading the view, typically from a nib.
-    self.navigationItem.leftBarButtonItem = self.editButtonItem;
+    
+    UIBarButtonItem *item = [[UIBarButtonItem alloc]initWithTitle:@"Map" style:UIBarButtonItemStylePlain target:self action:@selector(showMap)];
+    self.navigationItem.leftBarButtonItem = item;
+    
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc]init];
+    [dateFormatter setDateFormat:@"YYYYMMdd"];
+    NSString *dateString = [dateFormatter stringFromDate:[NSDate date]];
+    
+    NSURL *baseURL = [NSURL URLWithString:@"https://api.foursquare.com/v2"];
+    AFHTTPClient *client = [AFHTTPClient clientWithBaseURL:baseURL];
+    [client setDefaultHeader:@"Accept" value:RKMIMETypeJSON];
+    RKObjectManager *objectManager = [[RKObjectManager alloc]initWithHTTPClient:client];
+    RKObjectMapping *venueMapping = [RKObjectMapping mappingForClass:[Venue class]];
+    [venueMapping addAttributeMappingsFromDictionary:@{
+                                                       @"name": @"name"
+                                                       }];
+    
+    RKObjectMapping *locationMapping = [RKObjectMapping mappingForClass:[Location class]];
+    [locationMapping addAttributeMappingsFromDictionary:@{@"address"        : @"address",
+                                                          @"city"           : @"city",
+                                                          @"country"        : @"country",
+                                                          @"crossStreet"    : @"crossStreet",
+                                                          @"postalCode"     : @"postalCode",
+                                                          @"state"          : @"state",
+                                                          @"distance"       : @"distance",
+                                                          @"lat"            : @"lat",
+                                                          @"lng"            : @"lng"
+                                                          }];
+    
+    [venueMapping addPropertyMapping:[RKRelationshipMapping relationshipMappingFromKeyPath:@"location" toKeyPath:@"location" withMapping:locationMapping]];
+    
+    RKResponseDescriptor *respDirector = [RKResponseDescriptor responseDescriptorWithMapping:venueMapping pathPattern:nil keyPath:@"response.venues" statusCodes:RKStatusCodeIndexSetForClass(RKStatusCodeClassSuccessful)];
 
-    UIBarButtonItem *addButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(insertNewObject:)];
-    self.navigationItem.rightBarButtonItem = addButton;
+    [objectManager addResponseDescriptor:respDirector];
+    
+    CLLocationManager *locationManager = [[CLLocationManager alloc]init];
+    [locationManager startUpdatingLocation];
+        
+    CLLocationCoordinate2D coord = locationManager.location.coordinate;
+    
+    NSString *coordinates = [NSString stringWithFormat:@"%g,%g", coord.latitude, coord.longitude]; // @"37.33,-122.03";
+    
+    NSLog(@"%@", coordinates);
+    
+    NSString *clientId = [NSString stringWithUTF8String:kClientID];
+    NSString *clientSecret = [NSString stringWithUTF8String:kClientSecret];
+    
+    
+    
+    NSDictionary *params = @{@"ll" : coordinates,
+                             @"client_id" : clientId,
+                             @"client_secret" : clientSecret,
+                             @"query" : @"coffee",
+                             @"v" : dateString
+                             };
+    [objectManager getObjectsAtPath:@"https://api.foursquare.com/v2/venues/search" parameters:params success:^(RKObjectRequestOperation *operation, RKMappingResult *mappingResult) {
+        NSLog(@"Success");
+        NSLog(@"Mapping: %@", mappingResult);
+        self.coffeeArray = [mappingResult array];
+        for (Venue *ven in self.coffeeArray) {
+            NSLog(@"%@", ven.name);
+            NSLog(@"%@", ven.location.distance);
+        }
+        self.coffeeArray = [self.coffeeArray sortedArrayUsingComparator:^NSComparisonResult(Venue *a, Venue *b) {
+            NSNumber *aDist = a.location.distance;
+            NSNumber *bDist = b.location.distance;
+            return [aDist compare:bDist];
+        }];
+        [self.tableView reloadData];
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+            [self locationsIntoArray:[self.coffeeArray copy]];
+        });
+    } failure:^(RKObjectRequestOperation *operation, NSError *error) {
+        NSLog(@"Fail");
+    }];
+    
+}
+
+-(void)locationsIntoArray:(NSArray *)array {
+    
+}
+
+-(void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray *)locations {
+    self.lastLocation = [locations lastObject];
+    NSLog(@"Got location");
+}
+
+-(void)showMap {
+    
 }
 
 - (void)didReceiveMemoryWarning
@@ -57,15 +148,16 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
 {
-    return _objects.count;
+    return self.coffeeArray.count;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell" forIndexPath:indexPath];
 
-    NSDate *object = _objects[indexPath.row];
-    cell.textLabel.text = [object description];
+    Venue *ven = self.coffeeArray[indexPath.row];
+    cell.textLabel.text = ven.name;
+    cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ m", ven.location.distance];
     return cell;
 }
 
